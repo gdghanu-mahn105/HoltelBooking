@@ -16,12 +16,13 @@ import java.time.OffsetDateTime;
 @NoArgsConstructor
 public class BookingEntity {
     @Id
-//    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "internal_id")
-    private int internal_id;
-
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "booking_id")
-    private String booking_id;
+    private int booking_id;
+
+
+//    @Column(name = "booking_id")
+//    private String booking_id;
 
     @ManyToOne
     @JoinColumn(name = "room_id")

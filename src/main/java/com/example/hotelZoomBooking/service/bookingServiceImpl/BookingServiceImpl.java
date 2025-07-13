@@ -8,7 +8,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
-
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -64,8 +63,8 @@ public class BookingServiceImpl implements BookingService {
     }
     @Override
     public Map<String, Object> createBooking(BookingRequest request) {
-        LocalDate startDate= LocalDate.parse(request.getStart_date());
-        LocalDate endDate= LocalDate.parse(request.getEnd_date());
+        LocalDate startDate= LocalDate.parse(request.getStart_date()); // validate
+        LocalDate endDate= LocalDate.parse(request.getEnd_date()); // validate
         OffsetDateTime requestTimestamp;
         if (request.getRequestTimestamp() != null) {
             requestTimestamp = request.getRequestTimestamp();
@@ -96,7 +95,6 @@ public class BookingServiceImpl implements BookingService {
                 throw new ResponseStatusException(HttpStatus.NOT_FOUND,"invalid discount code");
             }
 
-
             if (discount==null) {
                 throw  new ResponseStatusException(HttpStatus.NOT_FOUND,"invalid discount code");
             }
@@ -104,6 +102,8 @@ public class BookingServiceImpl implements BookingService {
 
 
         double baseCost=baseCostCal(roomType,startDate,endDate);
+
+        // viết hàm riêng
         double promoDiscount=0;
         double durationDiscount=0;
         double vipDiscount=0;
@@ -119,7 +119,7 @@ public class BookingServiceImpl implements BookingService {
             vipDiscount+=baseCost*0.05;
 
         }
-        //System.out.println("VIP status from request: " + request.is_VIP());
+
         double totalDiscount=promoDiscount+durationDiscount+vipDiscount;
         double totalCost=baseCost-totalDiscount;
 
@@ -129,14 +129,14 @@ public class BookingServiceImpl implements BookingService {
         booking.setBegin_date(startDate);
         booking.setEnd_date(endDate);
         if(request.getDiscount_code()!=null) {
-        booking.setDiscountEntity(discountRepo.getReferenceById(request.getDiscount_code()));}
+            booking.setDiscountEntity(discountRepo.getReferenceById(request.getDiscount_code()));
+        } // format
         booking.setTotalCost(totalCost);
         booking.setBookingStatus("occupied");
         booking.setCreatedAt(requestTimestamp);
         booking.setUpdatedAt(requestTimestamp);
         booking= bookingRepository.save(booking);
-        String bookingId = String.format("booking%03d", booking.getInternal_id());
-        booking.setBooking_id(bookingId);
+//        String bookingId = String.format("booking%03d", booking.getInternal_id()); // viết lại theo strategy
         booking= bookingRepository.save(booking);
 
         HotelRoomEntity room = booking.getHotelRoomEntity();
@@ -162,7 +162,6 @@ public class BookingServiceImpl implements BookingService {
         response.put("details", details);
         response.put("message", "Đặt phòng thành công");
         return response;
-
     }
 
 
@@ -185,9 +184,54 @@ public class BookingServiceImpl implements BookingService {
 
 
     @Override
-    public Map<String, Object> cancelBooking(String booking_id) {
+    public Map<String, Object> cancelBooking(int booking_id, String cancel_timestamp) {
+        OffsetDateTime cancelTime;
+        try {
+            cancelTime = OffsetDateTime.parse(cancel_timestamp);
+        } catch (Exception e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid cancel_timestamp format, use ISO 8601");
+        }
 
-        return Map.of();
+        BookingEntity booking = bookingRepository.findById(booking_id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "booking_id not found"));
+
+        OffsetDateTime startDateTime = booking.getBegin_date().atStartOfDay(ZoneOffset.UTC).toOffsetDateTime();
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+
+        if (cancelTime.isAfter(now) || startDateTime.isEqual(now)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Can not cancel, time is out");
+        }
+        long HoursFromStart = ChronoUnit.HOURS.between(cancelTime, startDateTime);
+
+        double totalCost = booking.getTotalCost();
+        double refundAmount=0;
+        double penalty=0;
+
+        if(HoursFromStart>48) {
+            refundAmount = totalCost;
+            penalty = 0.0;
+        } else if(HoursFromStart<48) {
+            penalty = totalCost * 0.5;
+            refundAmount = totalCost - penalty;
+        }
+        booking.setBookingStatus("cancelled");
+        booking.setUpdatedAt(cancelTime);
+        bookingRepository.save(booking);
+
+        HotelRoomEntity room = booking.getHotelRoomEntity();
+        if (room != null) {
+            room.setRoomStatus("available");
+            room.setUpdatedAt(cancelTime);
+            hotelRoomRepo.save(room);
+        }
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("booking_id", booking_id);
+        response.put("refund_amount", refundAmount);
+        response.put("penalty", penalty);
+        response.put("message", HoursFromStart > 48 ? "Hủy thành công, hoàn tiền 100%" : "Hủy thành công, phạt 50%");
+
+        return response;
     }
 
 }

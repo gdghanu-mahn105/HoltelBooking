@@ -12,10 +12,9 @@ import java.util.Map;
 
 
 @RestController
-@RequestMapping("/api")
+@RequestMapping("/bookings") // đổi tên thành bookings
 @AllArgsConstructor
 public class BookingController {
-    @Autowired
     private final BookingService bookingService;
     @GetMapping("/availability")
     public Map<String, Object> availabilityChecking(
@@ -29,7 +28,8 @@ public class BookingController {
     public ResponseEntity<?> testing(@RequestParam(value = "user_id")String user_id){
         return ResponseEntity.ok(bookingService.testing(user_id));
     }
-    @PostMapping("/bookings")
+
+    @PostMapping("/addBookings")
     public ResponseEntity<?> createBooking(@RequestBody BookingRequest bookingRequest) {
         try {
             Map<String, Object> result = bookingService.createBooking(bookingRequest);
@@ -39,8 +39,10 @@ public class BookingController {
         }
     }
     @DeleteMapping("/{booking_id}")
-    public ResponseEntity<?> cancelBooking(@PathVariable("booking_id") String booking_id) {
-        return ResponseEntity.ok(bookingService.cancelBooking(booking_id));
+    public ResponseEntity<?> cancelBooking(@PathVariable("booking_id") int booking_id,
+                                           @RequestParam (value = "cancel_timestamp") String cancel_timestamp
+    ) {
+        return ResponseEntity.ok(bookingService.cancelBooking(booking_id, cancel_timestamp));
     }
 
 }
